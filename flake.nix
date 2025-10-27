@@ -21,7 +21,7 @@
               gnugrep
               gawk
               findutils
-              sed
+              gnused
               parted
               dosfstools         # mkfs.vfat
               e2fsprogs          # mkfs.ext4
