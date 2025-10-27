@@ -26,7 +26,7 @@
               dosfstools         # mkfs.vfat
               e2fsprogs          # mkfs.ext4
               rsync
-              gdisk              # sgdisk (optional)
+              gptfdisk           # sgdisk (optional)
               nixos-install-tools # nixos-install, nixos-generate-config, nixos-enter
             ];
             # Pull the script contents from the separate file:
