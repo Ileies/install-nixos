@@ -112,27 +112,50 @@ list_candidate_disks() {
   done < <(lsblk -dn -o NAME | sort)
 }
 
-any_partitions_mounted_on() {
-  local disk="$1"
-  # any mountpoints sourced from this disk's partitions?
-  findmnt -nr -S "^${disk}[0-9p]*" | awk '{print $1" -> "$2}'
+# Return lines "TARGET SOURCE" for mounts that live on this disk.
+mounted_pairs_on_disk() {
+  local disk="$1"           # e.g. /dev/sda or /dev/nvme0n1
+  local line src tgt
+  # --evaluate resolves /dev/disk/by-uuid/... to /dev/sdX etc.
+  while IFS= read -r line; do
+    src=${line%% *}
+    tgt=${line#* }
+    # Match /dev/sda1, /dev/sda2 ... AND /dev/nvme0n1p1, p2 ...
+    if [[ "$src" == "${disk}"[0-9]* || "$src" == "${disk}"p[0-9]* ]]; then
+      printf '%s %s\n' "$tgt" "$src"
+    fi
+  done < <(findmnt --evaluate -nr -o SOURCE,TARGET)
 }
 
+# Human summary "SOURCE -> TARGET"
+any_partitions_mounted_on() {
+  local disk="$1"
+  mounted_pairs_on_disk "$disk" | awk '{print "    " $2 " -> " $1}'
+}
+
+# Unmount deepest targets first; also turn off swap on partitions of this disk.
 unmount_partitions_of() {
   local disk="$1"
-  # Unmount deepest mountpoints first
-  local lines
-  lines="$(findmnt -nr -S "^${disk}[0-9p]*" -o TARGET | sort -r || true)"
-  if [[ -n "$lines" ]]; then
-    echo "$lines" | while IFS= read -r m; do
-      umount -R "$m"
+
+  # 1) Unmount filesystems (deepest mountpoints first)
+  if mapfile -t pairs < <(
+      mounted_pairs_on_disk "$disk" \
+      | awk '{print length($1) " " $0}' \
+      | sort -nr \
+      | cut -d" " -f2-
+    ); then
+    for entry in "${pairs[@]}"; do
+      local tgt src
+      tgt=${entry%% *}; src=${entry#* }
+      msg "Unmounting ${tgt} (source: ${src}) ..."
+      umount -R "$tgt" 2>/dev/null || umount "$tgt" || true
     done
   fi
 }
 
 require_tooling() {
   local missing=()
-  for t in lsblk findmnt parted mkfs.vfat mkfs.ext4 nixos-generate-config nixos-install rsync wipefs; do
+  for t in lsblk findmnt parted mkfs.vfat mkfs.ext4 nixos-generate-config nixos-install rsync wipefs git; do
     command -v "$t" >/dev/null 2>&1 || missing+=("$t")
   done
   if ((${#missing[@]})); then
@@ -223,6 +246,7 @@ if [[ -n "$MOUNTED" ]]; then
 else
   echo "  Mounted partitions: none"
 fi
+msg ""
 if ! confirm "ALL DATA on $DISK WILL BE ERASED. Is this correct?"; then
   err "Aborted."
   exit 1
