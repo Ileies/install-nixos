@@ -290,7 +290,7 @@ if [[ -d /mnt/etc/nixos/hosts/template ]]; then
     fi
   done
 fi
-git add -A
+git -C /mnt/etc/nixos add -A
 
 # 12) Install via flake
 if [[ -f /mnt/etc/nixos/flake.nix ]]; then
