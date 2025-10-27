@@ -271,7 +271,7 @@ mount "$BOOT" /mnt/boot
 msg "Generating NixOS hardware configuration ..."
 nixos-generate-config --root /mnt
 
-# 11) Copy current flake, restructure host files (flake-first flow)
+# 11) Copy current flake, restructure host files
 msg "Copying current flake from /etc/nixos to target /mnt/etc/nixos ..."
 rsync -a /etc/nixos/ /mnt/etc/nixos/
 
@@ -290,8 +290,9 @@ if [[ -d /mnt/etc/nixos/hosts/template ]]; then
     fi
   done
 fi
+git add -A
 
-# 12) SINGLE-PASS INSTALL via flake (skip double install)
+# 12) Install via flake
 if [[ -f /mnt/etc/nixos/flake.nix ]]; then
   msg "Installing system using flake '#$NEWNAME' ..."
   # Ensure flakes enabled for this session (harmless if already set)

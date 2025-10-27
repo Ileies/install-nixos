@@ -20,6 +20,7 @@
               util-linux         # lsblk, findmnt, blockdev, wipefs
               gnugrep
               gawk
+              git
               findutils
               gnused
               parted
