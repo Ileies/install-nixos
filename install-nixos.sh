@@ -176,25 +176,63 @@ if ! is_mnt_clean; then
   exit 1
 fi
 
-# 2) Ask for system/host name; ensure /etc/nixos/hosts/<name> doesn't already exist
-msg "Choose a name for your new system (example: pronix):"
-while true; do
-  read -r -p "New host name: " NEWNAME
-  NEWNAME="${NEWNAME// /-}"
-  if [[ -z "${NEWNAME}" ]]; then
-    err "Name cannot be empty."
-    continue
+# 2) Ask whether to set up a new host or reinstall an existing one
+IS_EXISTING=false
+msg "Install mode:"
+echo "  [1] New host  (create a fresh host config from template)"
+echo "  [2] Existing host  (reinstall a host that already has a config)"
+read -r -p "Choice [1/2]: " HOST_MODE
+if [[ "$HOST_MODE" != "1" && "$HOST_MODE" != "2" ]]; then
+  err "Invalid choice. Enter 1 or 2."
+  exit 1
+fi
+
+if [[ "$HOST_MODE" == "2" ]]; then
+  IS_EXISTING=true
+  # Collect existing host directories (skip 'template')
+  EXISTING_HOSTS=()
+  while IFS= read -r d; do
+    [[ "$d" == "template" ]] && continue
+    EXISTING_HOSTS+=("$d")
+  done < <(find /etc/nixos/hosts -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort)
+
+  if [[ ${#EXISTING_HOSTS[@]} -eq 0 ]]; then
+    err "No existing hosts found in /etc/nixos/hosts/."
+    exit 1
   fi
-  if [[ ! "$NEWNAME" =~ ^[a-zA-Z0-9._-]+$ ]]; then
-    err "Invalid name. Use letters, numbers, dots, underscores, or dashes."
-    continue
+
+  msg "Existing hosts:"
+  for i in "${!EXISTING_HOSTS[@]}"; do
+    printf "  [%d] %s\n" "$i" "${EXISTING_HOSTS[$i]}"
+  done
+  read -r -p "Enter index: " PICK_HOST
+  if ! [[ "$PICK_HOST" =~ ^[0-9]+$ ]] || [[ "$PICK_HOST" -ge "${#EXISTING_HOSTS[@]}" ]]; then
+    err "Invalid index."
+    exit 1
   fi
-  if [[ -e "/etc/nixos/hosts/$NEWNAME" ]]; then
-    err "/etc/nixos/hosts/$NEWNAME already exists. Pick another name."
-    continue
-  fi
-  break
-done
+  NEWNAME="${EXISTING_HOSTS[$PICK_HOST]}"
+  msg "Using existing host: $NEWNAME"
+else
+  # New host — pick a name that does not exist yet
+  msg "Choose a name for your new system (example: pronix):"
+  while true; do
+    read -r -p "New host name: " NEWNAME
+    NEWNAME="${NEWNAME// /-}"
+    if [[ -z "${NEWNAME}" ]]; then
+      err "Name cannot be empty."
+      continue
+    fi
+    if [[ ! "$NEWNAME" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+      err "Invalid name. Use letters, numbers, dots, underscores, or dashes."
+      continue
+    fi
+    if [[ -e "/etc/nixos/hosts/$NEWNAME" ]]; then
+      err "/etc/nixos/hosts/$NEWNAME already exists. Pick another name."
+      continue
+    fi
+    break
+  done
+fi
 
 # 3) List storage devices excluding the disk that currently hosts /
 ROOTDISK="$(root_disk || true)"
@@ -299,20 +337,23 @@ nixos-generate-config --root /mnt
 msg "Copying current flake from /etc/nixos to target /mnt/etc/nixos ..."
 rsync -a /etc/nixos/ /mnt/etc/nixos/
 
-msg "Restructuring host files for '$NEWNAME' ..."
-mkdir -p "/mnt/etc/nixos/hosts/$NEWNAME"
+if [[ "$IS_EXISTING" == "false" ]]; then
+  msg "Restructuring host files for new host '$NEWNAME' ..."
+  mkdir -p "/mnt/etc/nixos/hosts/$NEWNAME"
+  if [[ -d /mnt/etc/nixos/hosts/template ]]; then
+    for f in default.nix users.nix; do
+      if [[ -f "/mnt/etc/nixos/hosts/template/$f" ]]; then
+        cp "/mnt/etc/nixos/hosts/template/$f" "/mnt/etc/nixos/hosts/$NEWNAME/$f"
+      fi
+    done
+  fi
+fi
+# Place the freshly generated hardware config into the host directory (new and existing)
 if [[ -f /mnt/etc/nixos/hardware-configuration.nix ]]; then
   mv /mnt/etc/nixos/hardware-configuration.nix "/mnt/etc/nixos/hosts/$NEWNAME/"
 fi
 if [[ -f /mnt/etc/nixos/configuration.nix ]]; then
   rm -f /mnt/etc/nixos/configuration.nix
-fi
-if [[ -d /mnt/etc/nixos/hosts/template ]]; then
-  for f in default.nix users.nix; do
-    if [[ -f "/mnt/etc/nixos/hosts/template/$f" ]]; then
-      cp "/mnt/etc/nixos/hosts/template/$f" "/mnt/etc/nixos/hosts/$NEWNAME/$f"
-    fi
-  done
 fi
 git -C /mnt/etc/nixos add -A
 
