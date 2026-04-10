@@ -362,10 +362,10 @@ if [[ -f /mnt/etc/nixos/flake.nix ]]; then
   msg "Installing system using flake '#$NEWNAME' ..."
   # Ensure flakes enabled for this session (harmless if already set)
   export NIX_CONFIG="${NIX_CONFIG:-} experimental-features = nix-command flakes"
-  nixos-install --root /mnt --no-root-passwd --flake "/mnt/etc/nixos#$NEWNAME"
+  nixos-install --root /mnt --flake "/mnt/etc/nixos#$NEWNAME"
 else
   err "No flake.nix found in /mnt/etc/nixos; falling back to generated configuration."
-  nixos-install --root /mnt --no-root-passwd
+  nixos-install --root /mnt
 fi
 
 # Success — disable traps and cleanly finish
